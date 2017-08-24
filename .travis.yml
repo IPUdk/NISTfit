@@ -32,6 +32,6 @@ script:
 notifications:
   email:
     recipients:
-      - ian.bell@nist.gov
+      - jowr@ipu.dk
     on_success: never # default: change
     on_failure: always # default: always
