@@ -135,7 +135,7 @@ double fit_polynomial_eigen(bool threading, std::size_t Nmax, short Nthreads)
 void speedtest_fit_polynomial(short Nthread_max)
 {
     std::cout << "XXXXXXXXXX POLYNOMIAL XXXXXXXXXX" << std::endl;
-    for (std::size_t N = 10000; N < 1000001; N *= 10) {
+    for (std::size_t N = 1000; N < 100001; N *= 10) {
         auto time_serial_std = fit_polynomial(false, N, 1);
 		auto time_serial_alt = fit_polynomial_alt(false, N, 1);
 		auto time_serial_eig = fit_polynomial_eigen(false, N, 1);
@@ -144,9 +144,9 @@ void speedtest_fit_polynomial(short Nthread_max)
             auto time_parallel_std = fit_polynomial(threading, N, Nthreads);
 			auto time_parallel_alt = fit_polynomial_alt(threading, N, Nthreads);
 			auto time_parallel_eig = fit_polynomial_eigen(threading, N, Nthreads);
-            printf("Std: %10d %10d %10.7f %10.7f(nothread) %10.7f(thread)\n", Nthreads, static_cast<int>(N), time_serial_std / time_parallel_std, time_serial_std, time_parallel_std);
-			printf("Alt: %10d %10d %10.7f %10.7f(nothread) %10.7f(thread)\n", Nthreads, static_cast<int>(N), time_serial_alt / time_parallel_alt, time_serial_alt, time_parallel_alt);
-			printf("Eig: %10d %10d %10.7f %10.7f(nothread) %10.7f(thread)\n", Nthreads, static_cast<int>(N), time_serial_eig / time_parallel_eig, time_serial_eig, time_parallel_eig);
+            printf("Std: %2d %10d %10.5f %10.5f(nothread) %10.5f(threaded)\n", Nthreads, static_cast<int>(N), time_serial_std / time_parallel_std, time_serial_std, time_parallel_std);
+			printf("Alt: %2d %10d %10.5f %10.5f(nothread) %10.5f(threaded)\n", Nthreads, static_cast<int>(N), time_serial_alt / time_parallel_alt, time_serial_alt, time_parallel_alt);
+			printf("Eig: %2d %10d %10.5f %10.5f(nothread) %10.5f(threaded)\n", Nthreads, static_cast<int>(N), time_serial_eig / time_parallel_eig, time_serial_eig, time_parallel_eig);
 		}
 	}
 }

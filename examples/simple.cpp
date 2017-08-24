@@ -209,7 +209,7 @@ void speedtest_decaying_exponential(short Nthread_max)
         return std::chrono::duration<double>(endTime - startTime).count();
     };
     std::cout << "XXXXXXXXXX Evaluate DECAYING EXPONENTIAL with N-term expansions XXXXXXXXXX" << std::endl;
-    for (long N = 10; N <= 300; N += 20) {
+    for (long N = 10; N <= 70; N += 20) {
         long Nrepeats = 1;
         auto eval = build_eval(10000/*Nmax*/, N);
         auto time_serial = eval_decaying_exponential(eval, Nrepeats, false, 1);
