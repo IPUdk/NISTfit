@@ -138,11 +138,13 @@ void _fit_rational_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::Vecto
 		A.col(idx) = A.col(idx - 1).cwiseProduct(x);
 	}
 	Eigen::VectorXd tmp_res = A.colPivHouseholderQr().solve(y);
-
 	result.resize(1 + n_order + 1 + d_order);
 	result.segment(0, 1 + n_order) = tmp_res.segment(0, 1 + n_order);
 	result[n_order + 1] = 1.0;
 	result.segment(n_order + 2, d_order) = tmp_res.segment(1 + n_order, d_order);
+
+	//result.normalize();
+	result /= result.cwiseAbs().maxCoeff();
 
 	//Eigen::VectorXd y_new = Eigen::VectorXd::Zero(x.size());
 	//result = A.fullPivLu().solve(yw);
