@@ -121,10 +121,10 @@ void _fit_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, c
 * @param d_order The order of the denominator of the fitted polynomial
 * @param result The polynomial coefficients (length = 1 + n_order + 1 + d_order)
 */
-void _fit_rational_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, const size_t n_order, const size_t d_order, Eigen::VectorXd &result) 
+void _fit_rational_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, const size_t n_order, const size_t d_order, Eigen::VectorXd &result)
 {
 	// Create the full Vandermonde matrix
-	Eigen::MatrixXd A = Eigen::MatrixXd(x.size(), 1 + n_order + 1 + d_order);
+	Eigen::MatrixXd A = Eigen::MatrixXd(x.size(), 1 + n_order + d_order); // Forcing B0 to 1!
 	// Handle the numerator
 	A.col(0).setConstant(1.0);
 	for (size_t i = 1; i < n_order + 1; ++i) {
@@ -132,14 +132,43 @@ void _fit_rational_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::Vecto
 	}
 	// Handle the denominator
 	size_t idx = n_order + 1;
-	A.col(idx) = -1 * y;
-	for (size_t i = 1; i < d_order + 1; ++i) {
+	A.col(idx) = -1 * y.cwiseProduct(x);
+	for (size_t i = 1; i < d_order; ++i) {
 		idx = i + n_order + 1;
 		A.col(idx) = A.col(idx - 1).cwiseProduct(x);
 	}
-	result = A.colPivHouseholderQr().solve(y);
+	Eigen::VectorXd tmp_res = A.colPivHouseholderQr().solve(y);
+
+	result.resize(1 + n_order + 1 + d_order);
+	result.segment(0, 1 + n_order) = tmp_res.segment(0, 1 + n_order);
+	result[n_order + 1] = 1.0;
+	result.segment(n_order + 2, d_order) = tmp_res.segment(1 + n_order, d_order);
+
+	//Eigen::VectorXd y_new = Eigen::VectorXd::Zero(x.size());
+	//result = A.fullPivLu().solve(yw);
 	return;
 }
+//void _fit_rational_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, const size_t n_order, const size_t d_order, Eigen::VectorXd &result) 
+//{
+//	// Create the full Vandermonde matrix
+//	Eigen::MatrixXd A = Eigen::MatrixXd(x.size(), 1 + n_order + 1 + d_order);
+//	// Handle the numerator
+//	A.col(0).setConstant(1.0);
+//	for (size_t i = 1; i < n_order + 1; ++i) {
+//		A.col(i) = A.col(i - 1).cwiseProduct(x);
+//	}
+//	// Handle the denominator
+//	size_t idx = n_order + 1;
+//	A.col(idx) = -1 * y;
+//	for (size_t i = 1; i < d_order + 1; ++i) {
+//		idx = i + n_order + 1;
+//		A.col(idx) = A.col(idx - 1).cwiseProduct(x);
+//	}
+//	result = A.colPivHouseholderQr().solve(y);
+//	//Eigen::VectorXd y_new = Eigen::VectorXd::Zero(x.size());
+//	//result = A.fullPivLu().solve(yw);
+//	return;
+//}
 
 /**
 * @brief The polynomial example that uses the Eigen modules
@@ -168,6 +197,7 @@ double fit_polynomial_eigen(const bool threading, const std::size_t Nmax, const 
 	_fit_polynomial_eigen(x, y, poly.size()-1, cc);
 	auto endTime = std::chrono::system_clock::now();
 	Eigen::setNbThreads(threads); // Reset thread counter to default (0?) 
+	std::vector<double> c(&cc[0], cc.data() + cc.cols()*cc.rows());
 	return std::chrono::duration<double>(endTime - startTime).count();
 }
 
@@ -200,6 +230,7 @@ double fit_rational_polynomial_eigen(const bool threading, const std::size_t Nma
 	_fit_rational_polynomial_eigen(x, y, n_poly.size() - 1, d_poly.size() - 1, cc);
 	auto endTime = std::chrono::system_clock::now();
 	Eigen::setNbThreads(threads); // Reset thread counter to default (0?) 
+	std::vector<double> c(&cc[0], cc.data() + cc.cols()*cc.rows()); 
 	return std::chrono::duration<double>(endTime - startTime).count();
 }
 
