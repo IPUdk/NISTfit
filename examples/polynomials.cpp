@@ -15,6 +15,7 @@
 
 #include "Eigen/Core"
 #include "Eigen/Dense"
+#include "unsupported/Eigen/Polynomials"
 
 
 #include <iostream>
@@ -41,7 +42,7 @@ void get_c0(std::vector<double> &c0) {
 
 /**
 * @brief The original polynomial example that illustrates the overhead of threaded calculations
-* @param threading Should we use multithreading or not?
+* @param threading Should we use multi threading or not?
 * @param Nmax The number of points to be fitted (maps automatically to 0..1)
 * @param Nthreads The number of threads to be used
 */
@@ -68,7 +69,7 @@ double fit_polynomial(bool threading, std::size_t Nmax, short Nthreads)
 
 /**
 * @brief The polynomial example that uses an alternative evaluator
-* @param threading Should we use multithreading or not?
+* @param threading Should we use multi threading or not?
 * @param Nmax The number of points to be fitted (maps automatically to 0..1)
 * @param Nthreads The number of threads to be used
 */
@@ -93,9 +94,18 @@ double fit_polynomial_alt(bool threading, std::size_t Nmax, short Nthreads)
 	return std::chrono::duration<double>(endTime - startTime).count();
 }
 
-void _fit_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, const size_t order, Eigen::VectorXd &result) {
+/**
+* @brief A least squares polynomial fit using Eigen
+* @param x The independent variable (sampling points)
+* @param y The dependent variable (sampled data)
+* @param order The order of the fitted polynomial
+* @param result The polynomial coefficients (length = 1 + order)
+*/
+void _fit_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, const size_t order, Eigen::VectorXd &result) 
+{
 	// Create the full Vandermonde matrix
-	Eigen::MatrixXd A = Eigen::MatrixXd::Ones(x.size(), order + 1);
+	Eigen::MatrixXd A = Eigen::MatrixXd(x.size(), 1 + order);
+	A.col(0).setConstant(1.0);
 	for (size_t i = 1; i < order + 1; ++i) {
 		A.col(i) = A.col(i - 1).cwiseProduct(x);
 	}
@@ -104,21 +114,50 @@ void _fit_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, c
 }
 
 /**
+* @brief A least squares fit of a rational polynomial using Eigen
+* @param x The independent variable (sampling points)
+* @param y The dependent variable (sampled data)
+* @param n_order The order of the numerator of the fitted polynomial
+* @param d_order The order of the denominator of the fitted polynomial
+* @param result The polynomial coefficients (length = 1 + n_order + 1 + d_order)
+*/
+void _fit_rational_polynomial_eigen(const Eigen::VectorXd& x, const Eigen::VectorXd& y, const size_t n_order, const size_t d_order, Eigen::VectorXd &result) 
+{
+	// Create the full Vandermonde matrix
+	Eigen::MatrixXd A = Eigen::MatrixXd(x.size(), 1 + n_order + 1 + d_order);
+	// Handle the numerator
+	A.col(0).setConstant(1.0);
+	for (size_t i = 1; i < n_order + 1; ++i) {
+		A.col(i) = A.col(i - 1).cwiseProduct(x);
+	}
+	// Handle the denominator
+	size_t idx = n_order + 1;
+	A.col(idx) = -1 * y;
+	for (size_t i = 1; i < d_order + 1; ++i) {
+		idx = i + n_order + 1;
+		A.col(idx) = A.col(idx - 1).cwiseProduct(x);
+	}
+	result = A.colPivHouseholderQr().solve(y);
+	return;
+}
+
+/**
 * @brief The polynomial example that uses the Eigen modules
-* @param threading Should we use multithreading or not?
+* @param threading Should we use multi threading or not?
 * @param Nmax The number of points to be fitted (maps automatically to 0..1)
 * @param Nthreads The number of threads to be used
 */
-double fit_polynomial_eigen(bool threading, std::size_t Nmax, short Nthreads)
+double fit_polynomial_eigen(const bool threading, const std::size_t Nmax, const short Nthreads)
 {
-	Eigen::VectorXd x(Nmax);
-	Eigen::VectorXd y(Nmax);
-	std::vector<std::shared_ptr<NumericInput> > inputs;
-	get_inputs(Nmax, inputs);
-	for (std::size_t i = 0; i < Nmax; ++i) {
-		x[i] = inputs[i]->x();
-		y[i] = inputs[i]->y();
+	std::vector<double> c0;
+	get_c0_solved(c0);
+	Eigen::VectorXd poly = Eigen::Map<Eigen::VectorXd>(c0.data(), c0.size());
+	Eigen::VectorXd x = Eigen::VectorXd::LinSpaced(Nmax, 0, 1);
+	Eigen::VectorXd y(Nmax); // = Eigen::poly_eval(poly, x);		
+	for (int i = 0; i < Nmax; ++i) {
+		y[i] = Eigen::poly_eval(poly, x[i]);
 	}
+	int threads = Eigen::nbThreads();
 	if (!threading) {
 		Eigen::setNbThreads(1);
 	} else {
@@ -126,9 +165,41 @@ double fit_polynomial_eigen(bool threading, std::size_t Nmax, short Nthreads)
 	}
 	Eigen::VectorXd cc;
 	auto startTime = std::chrono::system_clock::now();
-	_fit_polynomial_eigen(x, y, 9, cc);
+	_fit_polynomial_eigen(x, y, poly.size()-1, cc);
 	auto endTime = std::chrono::system_clock::now();
-	Eigen::setNbThreads(0); // Reset thread counter to default
+	Eigen::setNbThreads(threads); // Reset thread counter to default (0?) 
+	return std::chrono::duration<double>(endTime - startTime).count();
+}
+
+/**
+* @brief The rational polynomial example that uses the Eigen modules
+* @param threading Should we use multi threading or not?
+* @param Nmax The number of points to be fitted (maps automatically to 0..1)
+* @param Nthreads The number of threads to be used
+*/
+double fit_rational_polynomial_eigen(const bool threading, const std::size_t Nmax, const short Nthreads)
+{
+	Eigen::VectorXd n_poly(4); 
+	n_poly << 1, 8, -50, 40;
+	Eigen::VectorXd d_poly(3);
+	d_poly << 5, 1, 8 ;
+	Eigen::VectorXd x = Eigen::VectorXd::LinSpaced(Nmax, 0, 1);
+	Eigen::VectorXd y(Nmax);
+	for (int i = 0; i < Nmax; ++i) {
+		y[i] = Eigen::poly_eval(n_poly, x[i]) / Eigen::poly_eval(d_poly, x[i]);
+	}
+	//y = y.cwiseQuotient(Eigen::poly_eval(d_poly, x));
+	int threads = Eigen::nbThreads();
+	if (!threading) {
+		Eigen::setNbThreads(1);
+	} else {
+		Eigen::setNbThreads(Nthreads);
+	}
+	Eigen::VectorXd cc;
+	auto startTime = std::chrono::system_clock::now();
+	_fit_rational_polynomial_eigen(x, y, n_poly.size() - 1, d_poly.size() - 1, cc);
+	auto endTime = std::chrono::system_clock::now();
+	Eigen::setNbThreads(threads); // Reset thread counter to default (0?) 
 	return std::chrono::duration<double>(endTime - startTime).count();
 }
 
@@ -151,6 +222,25 @@ void speedtest_fit_polynomial(short Nthread_max)
 	}
 }
 
+void speedtest_fit_rational_polynomial(short Nthread_max)
+{
+	std::cout << "XXXXXXXXXX RATIONAL POLYNOMIAL XXXXXXXXXX" << std::endl;
+	for (std::size_t N = 1000; N < 100001; N *= 10) {
+		//auto time_serial_std = fit_polynomial(false, N, 1);
+		//auto time_serial_alt = fit_polynomial_alt(false, N, 1);
+		auto time_serial_eig = fit_rational_polynomial_eigen(false, N, 1);
+		for (short Nthreads = 2; Nthreads <= Nthread_max; Nthreads += 2) {
+			const bool threading = true;
+			//auto time_parallel_std = fit_polynomial(threading, N, Nthreads);
+			//auto time_parallel_alt = fit_polynomial_alt(threading, N, Nthreads);
+			auto time_parallel_eig = fit_rational_polynomial_eigen(threading, N, Nthreads);
+			//printf("Std: %2d %10d %10.5f %10.5f(nothread) %10.5f(threaded)\n", Nthreads, static_cast<int>(N), time_serial_std / time_parallel_std, time_serial_std, time_parallel_std);
+			//printf("Alt: %2d %10d %10.5f %10.5f(nothread) %10.5f(threaded)\n", Nthreads, static_cast<int>(N), time_serial_alt / time_parallel_alt, time_serial_alt, time_parallel_alt);
+			printf("Eig: %2d %10d %10.5f %10.5f(nothread) %10.5f(threaded)\n", Nthreads, static_cast<int>(N), time_serial_eig / time_parallel_eig, time_serial_eig, time_parallel_eig);
+		}
+	}
+}
+
 
 int main(){
 	Eigen::initParallel();
@@ -159,5 +249,6 @@ int main(){
     Nthread_max = NTHREAD_MAX;
 #endif
     std::cout << "Max # of threads: " << Nthread_max << std::endl;
-	speedtest_fit_polynomial(Nthread_max);
+	speedtest_fit_rational_polynomial(Nthread_max);
+	speedtest_fit_polynomial(Nthread_max);	
 }
